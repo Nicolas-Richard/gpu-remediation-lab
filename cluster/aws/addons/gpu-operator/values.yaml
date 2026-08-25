@@ -1,0 +1,35 @@
+# EKS AL2023 NVIDIA AMIs already contain the NVIDIA driver and container
+# toolkit. The operator supplies device discovery, the device plugin, a
+# standalone DCGM hostengine, and dcgm-exporter.
+driver:
+  enabled: false
+
+toolkit:
+  enabled: false
+
+devicePlugin:
+  enabled: true
+
+dcgm:
+  enabled: true
+
+dcgmExporter:
+  enabled: true
+  config:
+    name: gpu-orch-dcgm-metrics
+    create: true
+    data: |-
+      # Required deterministic test signal. Keep this list intentionally narrow.
+      DCGM_FI_DEV_XID_ERRORS, gauge, Value of the last XID error encountered.
+
+# These operands must remain on an isolated node so the controller can keep
+# observing health and the test can inject XID=0 to confirm recovery.
+daemonsets:
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+    - key: gpu-orch.dev/hardware-degraded
+      operator: Equal
+      value: "true"
+      effect: NoSchedule

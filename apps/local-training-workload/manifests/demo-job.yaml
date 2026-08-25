@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: training
+---
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainingRuntime
+metadata:
+  name: demo-torch-distributed
+  namespace: training
+spec:
+  mlPolicy:
+    numNodes: 1
+    torch: {}
+  template:
+    spec:
+      # A failed rank fails its child Job immediately. JobSet then recreates the
+      # complete distributed group, giving all ranks one rendezvous generation.
+      failurePolicy:
+        maxRestarts: 20
+        restartStrategy: Recreate
+      replicatedJobs:
+        - name: node
+          template:
+            metadata:
+              labels:
+                trainer.kubeflow.org/trainjob-ancestor-step: trainer
+            spec:
+              backoffLimit: 0
+              template:
+                metadata:
+                  labels:
+                    gpu-orch.dev/auto-remediate: "true"
+                spec:
+                  restartPolicy: Never
+                  terminationGracePeriodSeconds: 1
+                  # Prefer separate failure domains initially, but permit a
+                  # replacement rank to co-locate after node isolation.
+                  affinity:
+                    podAntiAffinity:
+                      preferredDuringSchedulingIgnoredDuringExecution:
+                        - weight: 100
+                          podAffinityTerm:
+                            labelSelector:
+                              matchExpressions:
+                                - key: jobset.sigs.k8s.io/jobset-name
+                                  operator: In
+                                  values: [demo-train]
+                            topologyKey: kubernetes.io/hostname
+                  containers:
+                    - name: node
+                      image: local-training-workload:local
+                      imagePullPolicy: Never
+                      volumeMounts:
+                        - name: checkpoints
+                          mountPath: /checkpoints
+                  volumes:
+                    - name: checkpoints
+                      hostPath:
+                        path: /mnt/checkpoints
+                        type: DirectoryOrCreate
+---
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: demo-train
+  namespace: training
+spec:
+  runtimeRef:
+    apiGroup: trainer.kubeflow.org
+    kind: TrainingRuntime
+    name: demo-torch-distributed
+  trainer:
+    numNodes: 2
+    numProcPerNode: 1
+    image: local-training-workload:local
+    command: ["/bin/sh", "-c"]
+    args:
+      - >-
+        exec torchrun
+        --nnodes="${PET_NNODES}"
+        --nproc-per-node="${PET_NPROC_PER_NODE}"
+        --node-rank="${PET_NODE_RANK}"
+        --master-addr="${PET_MASTER_ADDR}"
+        --master-port="${PET_MASTER_PORT}"
+        /app/train.py
+        --checkpoint-dir=/checkpoints
+        --checkpoint-every=10
+        --sleep-seconds=0.05
+    resourcesPerNode:
+      requests:
+        cpu: "250m"
+        memory: 512Mi
+        nvidia.com/gpu: "1"
+      limits:
+        cpu: "1"
+        memory: 1Gi
+        nvidia.com/gpu: "1"

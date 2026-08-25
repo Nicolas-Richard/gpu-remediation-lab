@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dcgm-metrics-simulator
+  namespace: gpu-node-health-system
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dcgm-metrics-simulator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dcgm-metrics-simulator
+        gpu-orch.dev/health-exporter: dcgm-simulator
+    spec:
+      nodeSelector:
+        run.ai/simulated-gpu-node-pool: default
+      tolerations:
+        - key: gpu-orch.dev/hardware-degraded
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      containers:
+        - name: simulator
+          image: hackweek-dcgm-metrics-simulator:local
+          imagePullPolicy: Never
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          ports:
+            - name: metrics
+              containerPort: 9400
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi

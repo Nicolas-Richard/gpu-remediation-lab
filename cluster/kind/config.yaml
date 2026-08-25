@@ -1,0 +1,22 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+# DRA is GA (default on) in Kubernetes >= 1.34; pin explicitly for clarity.
+featureGates:
+  DynamicResourceAllocation: true
+nodes:
+  - role: control-plane
+    extraMounts:
+      - hostPath: /tmp/gpu-orch-checkpoints
+        containerPath: /mnt/checkpoints
+  - role: worker
+    labels:
+      run.ai/simulated-gpu-node-pool: default
+    extraMounts:
+      - hostPath: /tmp/gpu-orch-checkpoints
+        containerPath: /mnt/checkpoints
+  - role: worker
+    labels:
+      run.ai/simulated-gpu-node-pool: default
+    extraMounts:
+      - hostPath: /tmp/gpu-orch-checkpoints
+        containerPath: /mnt/checkpoints

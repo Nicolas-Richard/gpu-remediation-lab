@@ -1,0 +1,7 @@
+# Fake GPU Operator topology for local kind workers (no physical GPUs).
+topology:
+  nodePools:
+    default:
+      gpuCount: 2
+      gpuProduct: NVIDIA-L4
+      gpuMemory: 24576

@@ -1,0 +1,10 @@
+# AWS_REGION is intentionally not a Terraform variable. Export us-east-1 as
+# described in ../README.md before running any Terraform command.
+
+gpu_instance_type = "g6.xlarge"
+gpu_node_count     = 6
+
+tags = {
+  Environment = "dcgm-gate"
+  Owner       = "replace-me"
+}

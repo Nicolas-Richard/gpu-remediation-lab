@@ -1,0 +1,51 @@
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: __RUN_NAME__
+  namespace: gpu-training
+spec:
+  runtimeRef:
+    apiGroup: trainer.kubeflow.org
+    kind: TrainingRuntime
+    name: aws-torch-distributed
+  trainer:
+    numNodes: 4
+    numProcPerNode: 1
+    image: __TRAINING_IMAGE__
+    command: ["/bin/sh", "-c"]
+    args:
+      - >-
+        exec torchrun
+        --nnodes="${PET_NNODES}"
+        --nproc-per-node="${PET_NPROC_PER_NODE}"
+        --node-rank="${PET_NODE_RANK}"
+        --master-addr="${PET_MASTER_ADDR}"
+        --master-port="${PET_MASTER_PORT}"
+        /app/train.py
+        --checkpoint-dir=/checkpoints/__RUN_NAME__/state
+        --model=HuggingFaceTB/SmolLM3-3B
+        --model-revision=a07cc9a04f16550a088caea529712d1d335b0ac1
+        --dataset=HuggingFaceTB/smoltalk
+        --dataset-config=smol-magpie-ultra
+        --dataset-revision=5feaf2fd3ffca7c237fc38d1861bc30365d48ffa
+        --sequence-length=1024
+        --gradient-accumulation=4
+        --checkpoint-every=5
+        --worker-pid-file=/tmp/smollm-worker.pid
+        --max-steps=1000
+    env:
+      - name: HF_HOME
+        value: /checkpoints/huggingface-cache
+      - name: HF_HUB_DISABLE_TELEMETRY
+        value: "1"
+      - name: TOKENIZERS_PARALLELISM
+        value: "false"
+    resourcesPerNode:
+      requests:
+        cpu: "2"
+        memory: 10Gi
+        nvidia.com/gpu: "1"
+      limits:
+        cpu: "4"
+        memory: 14Gi
+        nvidia.com/gpu: "1"

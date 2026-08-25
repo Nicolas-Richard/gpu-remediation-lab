@@ -1,0 +1,95 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-training
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: aws-training-checkpoints
+spec:
+  capacity:
+    storage: 100Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  mountOptions:
+    - nfsvers=4.1
+    - rsize=1048576
+    - wsize=1048576
+    - hard
+    - timeo=600
+    - retrans=2
+    - noresvport
+  nfs:
+    server: __EFS_DNS_NAME__
+    path: /
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: aws-training-checkpoints
+  namespace: gpu-training
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: ""
+  volumeName: aws-training-checkpoints
+  resources:
+    requests:
+      storage: 100Gi
+---
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainingRuntime
+metadata:
+  name: aws-torch-distributed
+  namespace: gpu-training
+spec:
+  mlPolicy:
+    numNodes: 1
+    torch: {}
+  template:
+    spec:
+      failurePolicy:
+        maxRestarts: 20
+        restartStrategy: Recreate
+      replicatedJobs:
+        - name: node
+          template:
+            metadata:
+              labels:
+                trainer.kubeflow.org/trainjob-ancestor-step: trainer
+            spec:
+              backoffLimit: 0
+              template:
+                metadata:
+                  labels:
+                    gpu-orch.dev/auto-remediate: "true"
+                spec:
+                  restartPolicy: Never
+                  terminationGracePeriodSeconds: 1
+                  nodeSelector:
+                    gpu-orch.dev/node-pool: gpu
+                  tolerations:
+                    - key: nvidia.com/gpu
+                      operator: Equal
+                      value: "true"
+                      effect: NoSchedule
+                  affinity:
+                    podAntiAffinity:
+                      requiredDuringSchedulingIgnoredDuringExecution:
+                        - labelSelector:
+                            matchExpressions:
+                              - key: jobset.sigs.k8s.io/jobset-name
+                                operator: Exists
+                          topologyKey: kubernetes.io/hostname
+                  containers:
+                    - name: node
+                      volumeMounts:
+                        - name: checkpoints
+                          mountPath: /checkpoints
+                  volumes:
+                    - name: checkpoints
+                      persistentVolumeClaim:
+                        claimName: aws-training-checkpoints

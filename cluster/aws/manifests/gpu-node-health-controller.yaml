@@ -1,0 +1,97 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-node-health-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gpu-node-health-controller
+  namespace: gpu-node-health-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gpu-node-health-controller
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list"]
+  - apiGroups: [""]
+    resources: ["pods/eviction"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gpu-node-health-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: gpu-node-health-controller
+subjects:
+  - kind: ServiceAccount
+    name: gpu-node-health-controller
+    namespace: gpu-node-health-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpu-node-health-controller
+  namespace: gpu-node-health-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gpu-node-health-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gpu-node-health-controller
+    spec:
+      serviceAccountName: gpu-node-health-controller
+      nodeSelector:
+        gpu-orch.dev/node-pool: system
+      containers:
+        - name: controller
+          # aws-bootstrap replaces this before waiting for the rollout.
+          image: gpu-node-health-controller:aws
+          imagePullPolicy: Always
+          args:
+            - --metrics-bind-address=0
+            - --health-probe-bind-address=:8081
+            - --health-poll-interval=5s
+            - --recovery-confirmation-window=15s
+            - --health-source=dcgm
+            - --dcgm-exporter-namespace=gpu-operator
+            - --dcgm-exporter-label-selector=app=nvidia-dcgm-exporter
+          ports:
+            - name: health
+              containerPort: 8081
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
